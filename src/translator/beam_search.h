@@ -504,23 +504,30 @@ public:
         //   ++count;
         // }
         
+        // shape of expandedPathScores: [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist]
+        // note maxBeamSize = 1 if first token (i.e. t = 0)
         int dimBatch = expandedPathScores->shape()[-4];
         int vocabSize = expandedPathScores->shape()[-1];
         std::vector<std::vector<int>> trieVocabIdxs(dimBatch);
+        
         size_t trieVocabBatchIdx = 0;
-
-        for (int i = 0; i < origDimBatch; i++) { // loop over sentences
-          for (int j = 0; j < beams[i].size(); j++) {
+        for (int i = 0; i < origDimBatch; i++) { // loop over sentences in a batch
+          for (int j = 0; j < beams[i].size(); j++) { // loop over hypotheses for a sentence
             auto curTrieNode = beams[i][j]->GetTrieNode();
             if (curTrieNode != nullptr) { // check for null pointers
               for(auto&& node : *curTrieNode) {
+                // in each batch, the indices are original vocab_id plus hypothesis offset.
                 trieVocabIdxs[trieVocabBatchIdx].push_back(node.id_ + j * vocabSize);
               }
             }
             if (t == 0 && factorGroup == 0) {
-              break;
+              break; // break so we do not "overshoot" given score matrix shape
             }
           }
+          // if there is no more continuation for this sentence in the batch,
+          // it means the sentence has finished decoding.
+          // Hence we skip it in the trieVocabIdxs matrix,
+          // otherwise increment trieVocabBatchIdx index.
           if (trieVocabIdxs[trieVocabBatchIdx].size() != 0)
             trieVocabBatchIdx += 1;
         }
