@@ -57,24 +57,29 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
 
     h_res.clear();
     h_res_idx.clear();
-
-    size_t batchOffset = inputN * vocabSize;
+  
+    size_t batchOffset = inputN * vocabSize; // offset for each beam in float* scoresData
     for(size_t batchIdx = 0; batchIdx < dimBatch; ++batchIdx) {
+       // ensure that there is a continuation. if there is no continuation,
+       // scores matrix do not have scores for continuations of the hypoetheses
+       // correspond to beam_search.h line 532. could be redundant.
       if (trieVocabIdxs[batchIdx].size() > 0) {
-        std::vector<int> idxs = trieVocabIdxs[batchIdx]; // idxs for all hyps
+        std::vector<int> idxs = trieVocabIdxs[batchIdx]; // continuations (with offset) for all hyps
         std::partial_sort(
           idxs.begin(),
-          idxs.begin() + std::min(N, idxs.size()),
+          idxs.begin() + std::min(N, idxs.size()), // only sort min(max_beam_size, num_of_continuations) 
           idxs.end(),
-          [&](int a, int b) {return scoresData[a] > scoresData[b]; }
+          [&](int a, int b) {return scoresData[a] > scoresData[b]; } // compare by score. note a and b are with offset
         );
         for(int temp = 0; temp < std::min(N, idxs.size()); ++temp) {
           int idx = idxs[temp];
-          h_res_idx.push_back(idx + batchIdx * batchOffset);
-          // scores do not need offset because the pointer gets advanced each time
+          // move selected idxs to return vector.
+          // note idx is with offset for hypotheses but not batch, so add batch offset too
+          h_res_idx.push_back(idx + batchIdx * batchOffset); 
+          // scores do not need offset because the pointer gets advanced each time as below.
           h_res.push_back(scoresData[idx]);
         }
-        scoresData += batchOffset;
+        scoresData += batchOffset; //advance score pointer to start of next batch
       }
     }
     getPairs(/*cumulativeBeamSizes.back(),*/ outKeys, outPathScores);
