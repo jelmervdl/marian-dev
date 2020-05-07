@@ -524,8 +524,9 @@ public:
               break; // break so we do not "overshoot" given score matrix shape
             }
           }
-          // if there is no more continuation for this sentence in the batch,
-          // it means the sentence has finished decoding.
+          // ensure that there is a continuation. if there is no continuation,
+          // it means decoding has finished for the hypotheses
+          // scores matrix do not have scores for continuations of the hypoetheses
           // Hence we skip it in the trieVocabIdxs matrix,
           // otherwise increment trieVocabBatchIdx index.
           if (trieVocabIdxs[trieVocabBatchIdx].size() != 0)
