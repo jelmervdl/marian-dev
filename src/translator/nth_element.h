@@ -15,7 +15,13 @@ typedef std::function<void(Tensor logProbs,
                            std::vector<float>& outCosts,
                            std::vector<unsigned>& outKeys,
                            const bool isFirst,
-                           std::vector<std::vector<int>>& trieVocabIdxs)> GetNBestListFn; // @pinzhenchen this should a reference
+                           std::vector<std::vector<int>>& trieVocabIdxs,
+                           float * cputensor)> GetNBestListFn;
 
-GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId deviceId);
+GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId deviceId, bool triePrune=false);
+
+float * getPinnedMemory(size_t size);
+void freePinnedMemory(float * mem);
+void copyTensorToCpu(float * cpumem, float * gpumem, size_t size);
+
 }  // namespace marian

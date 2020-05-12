@@ -276,6 +276,8 @@ public:
   //**********************************************************************
   // main decoding function
   Histories search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch) {
+    float * cputensor = nullptr;
+
     auto factoredVocab = trgVocab_->tryAs<FactoredVocab>();
 #if 0   // use '1' here to disable factored decoding, e.g. for comparisons
     factoredVocab.reset();
@@ -290,7 +292,7 @@ public:
     const auto trgEosId = trgVocab_->getEosId();
     const auto trgUnkId = trgVocab_->getUnkId();
 
-    auto getNBestList = createGetNBestListFn(beamSize_, origDimBatch, graph->getDeviceId());
+    auto getNBestList = createGetNBestListFn(beamSize_, origDimBatch, graph->getDeviceId(), triePrune_);
 
     for(auto scorer : scorers_) {
       scorer->clear(graph);
@@ -535,11 +537,16 @@ public:
 
         std::vector<unsigned int> nBestKeys; // [currentDimBatch, maxBeamSize] flattened -> (batchIdx, beamHypIdx, word idx) flattened
         std::vector<float> nBestPathScores;  // [currentDimBatch, maxBeamSize] flattened
+#ifdef CUDA_FOUND
+        if (!cputensor)
+          cputensor = getPinnedMemory(expandedPathScores->val()->shape().elements()*sizeof(float)*beamSize_); // Allocate pinned memory the first time round. At first beam is 1, so we need to allocate more.
+#endif
         getNBestList(/*in*/ expandedPathScores->val(), // [currentDimBatch, 1, 1, dimVocab or dimShortlist] for first token and [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist] otherwise
                     /*N=*/ maxBeamSize,              // desired beam size
                     /*out*/ nBestPathScores, /*out*/ nBestKeys,
                     /*first=*/t == 0 && factorGroup == 0,
-                    /*trieVocabs=*/trieVocabIdxs); // @TODO: this is only used for checking presently, and should be removed altogether
+                    /*trieVocabs=*/trieVocabIdxs, // @TODO: this is only used for checking presently, and should be removed altogether
+                    cputensor);
         // Now, nBestPathScores contain N-best expandedPathScores for each batch and beam,
         // and nBestKeys for each their original location (batchIdx, beamHypIdx, word).
 
@@ -592,7 +599,10 @@ public:
           batchCounter+= 1;
         }
     } // end of main loop over output time steps
-
+#ifdef CUDA_FOUND
+    if (cputensor)
+      freePinnedMemory(cputensor);
+#endif
     return histories; // [origDimBatch][t][N best hyps]
   }
 };

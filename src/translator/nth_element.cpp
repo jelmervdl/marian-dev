@@ -32,7 +32,8 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
                     std::vector<float>& outPathScores,
                     std::vector<unsigned>& outKeys,
                     const bool isFirst,
-                    std::vector<std::vector<int>>& trieVocabIdxs) {
+                    std::vector<std::vector<int>>& trieVocabIdxs,
+                    float * cpumem) {
     
     // vocabMap used for debugging
     /*
@@ -47,13 +48,24 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
       vocabMap[count] = token;
       ++count;
     } */
-
     const auto vocabSize = scores->shape()[-1];
     const auto inputN    = scores->shape()[-2];
     const auto dimBatch  = scores->shape()[-4];
 
+    float* scoresData = nullptr;
+    #ifdef CUDA_FOUND
+    if (scores->getDeviceId().type == DeviceType::gpu) {
+      //Copy to the CPU
+      copyTensorToCpu(cpumem, scores->data(), scores->shape().elements()*sizeof(float));
+      scoresData = cpumem;
+    } else {
+      ABORT_IF(inputN != (isFirst ? 1 : N), "Input tensor has wrong beam dim??"); // @TODO: Remove isFirst argument altogether
+      scoresData  = scores->data();
+    }
+    #else
     ABORT_IF(inputN != (isFirst ? 1 : N), "Input tensor has wrong beam dim??"); // @TODO: Remove isFirst argument altogether
-    const float* scoresData = scores->data();
+    scoresData  = scores->data();
+    #endif
 
     h_res.clear();
     h_res_idx.clear();
@@ -108,16 +120,16 @@ GetNBestListFn createGetNBestListGPUFn(size_t beamSize, size_t dimBatch, DeviceI
 
 // factory function
 // Returns a lambda with the same signature as the getNBestList() function.
-GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId deviceId) {
+GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId deviceId, bool triePrune) {
 #ifdef CUDA_FOUND
-  if(deviceId.type == DeviceType::gpu)
+  if(deviceId.type == DeviceType::gpu && !triePrune)
     return createGetNBestListGPUFn(beamSize, dimBatch, deviceId);
 #else
   deviceId; beamSize; dimBatch; // (unused)
 #endif
   auto nth = New<NthElementCPU>();
-  return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst, std::vector<std::vector<int>>& trieVocabIdxs) {
-    return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst, trieVocabIdxs);
+  return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst, std::vector<std::vector<int>>& trieVocabIdxs, float * cputensor=nullptr) {
+    return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst, trieVocabIdxs, cputensor);
   };
 }
 
