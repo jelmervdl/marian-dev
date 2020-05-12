@@ -32,7 +32,7 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
                     std::vector<float>& outPathScores,
                     std::vector<unsigned>& outKeys,
                     const bool isFirst,
-                    std::vector<std::vector<int>> trieVocabIdxs) {
+                    std::vector<std::vector<int>>& trieVocabIdxs) {
     
     // vocabMap used for debugging
     /*
@@ -116,7 +116,7 @@ GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId d
   deviceId; beamSize; dimBatch; // (unused)
 #endif
   auto nth = New<NthElementCPU>();
-  return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst, std::vector<std::vector<int>> trieVocabIdxs) {
+  return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst, std::vector<std::vector<int>>& trieVocabIdxs) {
     return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst, trieVocabIdxs);
   };
 }

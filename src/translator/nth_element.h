@@ -15,7 +15,7 @@ typedef std::function<void(Tensor logProbs,
                            std::vector<float>& outCosts,
                            std::vector<unsigned>& outKeys,
                            const bool isFirst,
-                           std::vector<std::vector<int>> trieVocabIdxs)> GetNBestListFn;
+                           std::vector<std::vector<int>>& trieVocabIdxs)> GetNBestListFn; // @pinzhenchen this should a reference
 
 GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId deviceId);
 }  // namespace marian

@@ -83,7 +83,7 @@ public:
       // They can be between 0 and (vocabSize * nBestBeamSize * batchSize)-1.
       // (beamHypIdx refers to the GPU tensors, *not* the beams[] array; they are not the same in case of purging)
       const auto  key       = nBestKeys[i];
-      
+
       // decompose key into individual indices (batchIdx, beamHypIdx, wordIdx)
       const auto beamHypIdx      = (key / vocabSize) % nBestBeamSize;
       const auto currentBatchIdx = (key / vocabSize) / nBestBeamSize;
@@ -91,13 +91,13 @@ public:
 
       bool dropHyp = !dropBatchEntries.empty() && dropBatchEntries[origBatchIdx];
 
-      // if we force=drop the hypothesis, assign EOS, otherwise the expected word id. 
+      // if we force=drop the hypothesis, assign EOS, otherwise the expected word id.
       const auto wordIdx    = dropHyp ? trgVocab_->getEosId().toWordIndex() : (WordIndex)(key % vocabSize);
 
       // @TODO: We currently assign a log probability of 0 to all beam entries of the dropped batch entry, instead it might be a good idea to use
-      // the per Hyp pathScore without the current expansion (a bit hard to obtain). 
-      // For the case where we drop empty inputs, 0 is fine. For other use cases like a forced stop, the penultimate pathScore might be better. 
-      // For the empty hyp this would naturally result in 0, too. 
+      // the per Hyp pathScore without the current expansion (a bit hard to obtain).
+      // For the case where we drop empty inputs, 0 is fine. For other use cases like a forced stop, the penultimate pathScore might be better.
+      // For the empty hyp this would naturally result in 0, too.
       const float pathScore = dropHyp ? 0.f : nBestPathScores[i]; // 0 (Prob = 1, maximum score) if dropped or expanded path score for (batchIdx, beamHypIdx, word)
 
       const auto& beam = beams[origBatchIdx];
@@ -503,13 +503,13 @@ public:
         //   vocabMap[count] = token;
         //   ++count;
         // }
-        
+
         // shape of expandedPathScores: [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist]
         // note maxBeamSize = 1 if first token (i.e. t = 0)
         int dimBatch = expandedPathScores->shape()[-4];
         int vocabSize = expandedPathScores->shape()[-1];
         std::vector<std::vector<int>> trieVocabIdxs(dimBatch);
-        
+
         size_t trieVocabBatchIdx = 0;
         for (int i = 0; i < origDimBatch; i++) { // loop over sentences in a batch
           for (int j = 0; j < beams[i].size(); j++) { // loop over hypotheses for a sentence
@@ -580,9 +580,9 @@ public:
 
       // advance trie pointers
         int batchCounter = 0;
-        for(auto beam : beams) {
+        for(auto&& beam : beams) {
           int hypCounter = 0;
-          for (auto hyp : beam) {
+          for (auto&& hyp : beam) {
             if (!hyp->hasTrieContinuatuions()) {
               // should never reach here
               std::cout << "batch: " << batchCounter << ", hyp: " << hypCounter << " not-in-trie-WARNING\n";
