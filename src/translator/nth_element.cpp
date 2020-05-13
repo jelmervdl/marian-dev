@@ -55,8 +55,8 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
     float* scoresData = nullptr;
     #ifdef CUDA_FOUND
     if (scores->getDeviceId().type == DeviceType::gpu) {
-      //Copy to the CPU
-      copyTensorToCpu(cpumem, scores->data(), scores->shape().elements()*sizeof(float));
+      // Finish the asynchronous GPU copy
+      syncStreamZero();
       scoresData = cpumem;
     } else {
       ABORT_IF(inputN != (isFirst ? 1 : N), "Input tensor has wrong beam dim??"); // @TODO: Remove isFirst argument altogether

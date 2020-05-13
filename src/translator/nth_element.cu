@@ -479,7 +479,11 @@ float * getPinnedMemory(size_t size) {
 void freePinnedMemory(float * mem) {
   CUDA_CHECK(cudaFreeHost(mem));
 }
-void copyTensorToCpu(float * cpumem, float * gpumem, size_t size) {
-  CUDA_CHECK(cudaMemcpy(cpumem, gpumem, size, cudaMemcpyDeviceToHost));
+void copyTensorToCpuAsync(float * cpumem, float * gpumem, size_t size) {
+  CUDA_CHECK(cudaMemcpyAsync(cpumem, gpumem, size, cudaMemcpyDeviceToHost, 0));
+}
+
+void syncStreamZero() {
+  cudaStreamSynchronize(/* stream_ */ 0);
 }
 }  // namespace marian

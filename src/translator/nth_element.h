@@ -22,6 +22,7 @@ GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId d
 
 float * getPinnedMemory(size_t size);
 void freePinnedMemory(float * mem);
-void copyTensorToCpu(float * cpumem, float * gpumem, size_t size);
+void copyTensorToCpuAsync(float * cpumem, float * gpumem, size_t size);
+void syncStreamZero(); // Since we use the async API to copy in order to overlay some operations
 
 }  // namespace marian

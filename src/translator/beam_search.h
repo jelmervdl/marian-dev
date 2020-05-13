@@ -492,6 +492,16 @@ public:
         for(auto state : states)
           state->blacklist(expandedPathScores, batch);
 
+        // We are done with GPU operations with regards to model search. Safe to start copying the logits to the host
+        // While we do the trie search.
+        #ifdef CUDA_FOUND
+        if (!cputensor && expandedPathScores->val()->getDeviceId().type == DeviceType::gpu)
+          cputensor = getPinnedMemory(expandedPathScores->val()->shape().elements()*sizeof(float)*beamSize_); // Allocate pinned memory the first time round. At first beam is 1, so we need to allocate more.
+
+        if (expandedPathScores->val()->getDeviceId().type == DeviceType::gpu)
+          copyTensorToCpuAsync(cputensor, expandedPathScores->val()->data(), expandedPathScores->val()->shape().elements()*sizeof(float)); // Start asynchronous copy to CPU
+        #endif
+
         //**********************************************************************
         // perform beam search
 
@@ -537,10 +547,7 @@ public:
 
         std::vector<unsigned int> nBestKeys; // [currentDimBatch, maxBeamSize] flattened -> (batchIdx, beamHypIdx, word idx) flattened
         std::vector<float> nBestPathScores;  // [currentDimBatch, maxBeamSize] flattened
-#ifdef CUDA_FOUND
-        if (!cputensor)
-          cputensor = getPinnedMemory(expandedPathScores->val()->shape().elements()*sizeof(float)*beamSize_); // Allocate pinned memory the first time round. At first beam is 1, so we need to allocate more.
-#endif
+
         getNBestList(/*in*/ expandedPathScores->val(), // [currentDimBatch, 1, 1, dimVocab or dimShortlist] for first token and [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist] otherwise
                     /*N=*/ maxBeamSize,              // desired beam size
                     /*out*/ nBestPathScores, /*out*/ nBestKeys,
