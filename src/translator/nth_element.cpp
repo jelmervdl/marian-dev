@@ -13,6 +13,7 @@
 #include <fstream>
 #include <map>
 #include <boost/algorithm/string.hpp>
+#include <math.h>
 
 namespace marian {
 
@@ -32,6 +33,7 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
                     std::vector<float>& outPathScores,
                     std::vector<unsigned>& outKeys,
                     const bool isFirst,
+                    size_t t,
                     std::vector<std::vector<int>>& trieVocabIdxs,
                     float * cpumem) {
     
@@ -51,6 +53,7 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
     const auto vocabSize = scores->shape()[-1];
     const auto inputN    = scores->shape()[-2];
     const auto dimBatch  = scores->shape()[-4];
+    size_t dynamic_N = std::max((size_t)(N / pow(2, t)), (size_t)12);
 
     float* scoresData = nullptr;
     #ifdef CUDA_FOUND
@@ -79,11 +82,11 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
         std::vector<int> idxs = trieVocabIdxs[batchIdx]; // continuations (with offset) for all hyps
         std::partial_sort(
           idxs.begin(),
-          idxs.begin() + std::min(N, idxs.size()), // only sort min(max_beam_size, num_of_continuations) 
+          idxs.begin() + std::min(dynamic_N, idxs.size()), // only sort min(max_beam_size, num_of_continuations) 
           idxs.end(),
           [&](int a, int b) {return scoresData[a] > scoresData[b]; } // compare by score. note a and b are with offset
         );
-        for(int temp = 0; temp < std::min(N, idxs.size()); ++temp) {
+        for(int temp = 0; temp < std::min(dynamic_N, idxs.size()); ++temp) {
           int idx = idxs[temp];
           // move selected idxs to return vector.
           // note idx is with offset for hypotheses but not batch, so add batch offset too
@@ -128,8 +131,8 @@ GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId d
   deviceId; beamSize; dimBatch; // (unused)
 #endif
   auto nth = New<NthElementCPU>();
-  return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst, std::vector<std::vector<int>>& trieVocabIdxs, float * cputensor=nullptr) {
-    return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst, trieVocabIdxs, cputensor);
+  return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst, size_t t, std::vector<std::vector<int>>& trieVocabIdxs, float * cputensor=nullptr) {
+    return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst, t, trieVocabIdxs, cputensor);
   };
 }
 

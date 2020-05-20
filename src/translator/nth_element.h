@@ -15,6 +15,7 @@ typedef std::function<void(Tensor logProbs,
                            std::vector<float>& outCosts,
                            std::vector<unsigned>& outKeys,
                            const bool isFirst,
+                           size_t t,
                            std::vector<std::vector<int>>& trieVocabIdxs,
                            float * cputensor)> GetNBestListFn;
 

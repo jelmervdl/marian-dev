@@ -552,6 +552,7 @@ public:
                     /*N=*/ maxBeamSize,              // desired beam size
                     /*out*/ nBestPathScores, /*out*/ nBestKeys,
                     /*first=*/t == 0 && factorGroup == 0,
+                    t,
                     /*trieVocabs=*/trieVocabIdxs, // @TODO: this is only used for checking presently, and should be removed altogether
                     cputensor);
         // Now, nBestPathScores contain N-best expandedPathScores for each batch and beam,
