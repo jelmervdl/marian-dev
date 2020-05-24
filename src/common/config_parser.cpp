@@ -617,6 +617,12 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<std::string>("--trie-pruning-path",
      "Use trie pruning during translation. Provide path to the monolingual corpora.")
     ->implicit_val("");
+  cli.add<float>("--beam-size-divide-by",
+     "Divide beam size by the given float value at each decoding step. default 1 (no reduction).",
+     1);
+  cli.add<size_t>("--beam-size-min",
+     "Minimum beam size after dynamically reduction. default 12.",
+     12);
 #ifdef USE_SENTENCEPIECE
   cli.add<bool>("--no-spm-decode",
       "Keep the output segmented into SentencePiece subwords");

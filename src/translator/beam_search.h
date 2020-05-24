@@ -24,6 +24,8 @@ private:
   Ptr<const Vocab> trgVocab_;
 
   bool triePrune_ = false;
+  size_t beamSizeDivideBy;
+  size_t beamSizeDivideMin;
   std::vector<trieannosaurus::Node>* trie_;
 
   static constexpr auto INVALID_PATH_SCORE = -9999; // (@TODO: change to -9999.0 once C++ allows that)
@@ -42,6 +44,8 @@ public:
           if (options_->get<std::string>("trie-pruning-path") != "") {
             triePrune_ = true;
           }
+          beamSizeDivideBy = options_->get<float>("beam-size-divide-by");
+          beamSizeDivideMin = options_->get<size_t>("beam-size-min");
         }
 
   // combine new expandedPathScores and previous beams into new set of beams
@@ -351,6 +355,18 @@ public:
 
     IndexType currentDimBatch = origDimBatch;
     auto prevBatchIdxMap = batchIdxMap; // [origBatchIdx -> currentBatchIdx] but shifted by one time step
+    
+
+    std::map<int, std::string> vocabMap;
+    std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
+    int count = 0;
+    for( std::string line; getline( input, line ); ) {
+      boost::trim_right(line);
+      std::string token = line.substr(0, line.find(": "));
+      vocabMap[count] = token;
+      ++count;
+    }    
+    
     // main loop over output time steps
     for (size_t t = 0; ; t++) {
       ABORT_IF(origDimBatch != beams.size(), "Lost a batch entry??");
@@ -505,16 +521,6 @@ public:
         //**********************************************************************
         // perform beam search
 
-        // std::map<int, std::string> vocabMap;
-        // std::string delimiter = ": ";
-        // std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
-        // int count = 0;
-        // for( std::string line; getline( input, line ); ) {
-        //   boost::trim_right(line);
-        //   std::string token = line.substr(0, line.find(delimiter));
-        //   vocabMap[count] = token;
-        //   ++count;
-        // }
 
         // shape of expandedPathScores: [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist]
         // note maxBeamSize = 1 if first token (i.e. t = 0)
@@ -553,6 +559,8 @@ public:
                     /*out*/ nBestPathScores, /*out*/ nBestKeys,
                     /*first=*/t == 0 && factorGroup == 0,
                     t,
+                    beamSizeDivideBy,
+                    beamSizeDivideMin,
                     /*trieVocabs=*/trieVocabIdxs, // @TODO: this is only used for checking presently, and should be removed altogether
                     cputensor);
         // Now, nBestPathScores contain N-best expandedPathScores for each batch and beam,
@@ -602,11 +610,20 @@ public:
               // should never reach here
               std::cout << "batch: " << batchCounter << ", hyp: " << hypCounter << " not-in-trie-WARNING\n";
             }
+            Words hypWords = hyp->tracebackWords();
+            std::cout << "hyp: " << hypCounter << ", words: ";
+            for (auto word : hypWords) {
+              std::cout << vocabMap[word.wordId_] << " ";
+            }
+            std::cout << std::endl;
             hypCounter += 1;
           }
           batchCounter+= 1;
         }
     } // end of main loop over output time steps
+
+    std::cout << "--------\n";
+  
 #ifdef CUDA_FOUND
     if (cputensor)
       freePinnedMemory(cputensor);
