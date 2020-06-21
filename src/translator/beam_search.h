@@ -41,7 +41,7 @@ public:
         beamSize_(options_->get<size_t>("beam-size")),
         trgVocab_(trgVocab),
         trie_(trie) {
-          if (options_->get<std::string>("trie-pruning-path") != "") {
+          if (options_->get<std::string>("trie-pruning-path-file") != "") {
             triePrune_ = true;
           }
           beamSizeDivideBy = options_->get<float>("beam-size-divide-by");
@@ -602,27 +602,27 @@ public:
       beams = purgedNewBeams;
 
       // advance trie pointers
-        int batchCounter = 0;
+        // int batchCounter = 0;
         for(auto&& beam : beams) {
-          int hypCounter = 0;
+          // int hypCounter = 0;
           for (auto&& hyp : beam) {
             if (!hyp->hasTrieContinuatuions()) {
               // should never reach here
-              std::cout << "batch: " << batchCounter << ", hyp: " << hypCounter << " not-in-trie-WARNING\n";
+              // std::cout << "batch: " << batchCounter << ", hyp: " << hypCounter << " not-in-trie-WARNING\n";
             }
-            Words hypWords = hyp->tracebackWords();
-            std::cout << "hyp: " << hypCounter << ", words: ";
-            for (auto word : hypWords) {
-              std::cout << vocabMap[word.wordId_] << " ";
-            }
-            std::cout << std::endl;
-            hypCounter += 1;
+            // Words hypWords = hyp->tracebackWords();
+            // std::cout << "hyp: " << hypCounter << ", words: ";
+            // for (auto word : hypWords) {
+              // std::cout << vocabMap[word.wordId_] << " ";
+            // }
+            // std::cout << std::endl;
+            // hypCounter += 1;
           }
-          batchCounter+= 1;
+          // batchCounter+= 1;
         }
     } // end of main loop over output time steps
 
-    std::cout << "--------\n";
+    // std::cout << "--------\n";
   
 #ifdef CUDA_FOUND
     if (cputensor)

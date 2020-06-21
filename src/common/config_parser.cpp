@@ -617,6 +617,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<std::string>("--trie-pruning-path",
      "Use trie pruning during translation. Provide path to the monolingual corpora.")
     ->implicit_val("");
+  cli.add<std::string>("--trie-pruning-path-file",
+     "Perform trie-constrained decoding on multiple input and output files. Source and target filenames should be on tab-separated lines")
+    ->implicit_val("");
   cli.add<float>("--beam-size-divide-by",
      "Divide beam size by the given float value at each decoding step. default 1 (no reduction).",
      1);
