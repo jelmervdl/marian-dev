@@ -28,7 +28,7 @@ public:
       : options_(options),
         scorers_(scorers),
         beamSize_(options_->get<size_t>("beam-size")),
-        trgVocab_(trgVocab) {}
+        trgVocab_(trgVocab){}
 
   // combine new expandedPathScores and previous beams into new set of beams
   Beams toHyps(const std::vector<unsigned int>& nBestKeys, // [currentDimBatch, beamSize] flattened -> ((batchIdx, beamHypIdx) flattened, word idx) flattened
@@ -260,7 +260,9 @@ public:
 
   //**********************************************************************
   // main decoding function
-  Histories search(Ptr<ExpressionGraph> graph, Ptr<data::CorpusBatch> batch) {
+  Histories search(Ptr<ExpressionGraph> graph, 
+                   Ptr<data::CorpusBatch> batch,
+                   std::vector<int> sourceSent=std::vector<int>()) {
     auto factoredVocab = trgVocab_->tryAs<FactoredVocab>();
 #if 0   // use '1' here to disable factored decoding, e.g. for comparisons
     factoredVocab.reset();
@@ -476,6 +478,10 @@ public:
 
         //**********************************************************************
         // perform beam search
+        std::vector<std::vector<int>> vocabConstraint(1);
+        for (int temp : sourceSent) {
+          vocabConstraint[0].push_back(temp);
+        }
 
         // find N best amongst the (maxBeamSize * dimVocab) hypotheses
         std::vector<unsigned int> nBestKeys; // [currentDimBatch, maxBeamSize] flattened -> (batchIdx, beamHypIdx, word idx) flattened
@@ -483,7 +489,8 @@ public:
         getNBestList(/*in*/ expandedPathScores->val(), // [currentDimBatch, 1, maxBeamSize, dimVocab or dimShortlist]
                     /*N=*/ maxBeamSize,              // desired beam size
                     /*out*/ nBestPathScores, /*out*/ nBestKeys,
-                    /*first=*/t == 0 && factorGroup == 0); // @TODO: this is only used for checking presently, and should be removed altogether
+                    /*first=*/t == 0 && factorGroup == 0, // @TODO: this is only used for checking presently, and should be removed altogether
+                    /* vector<vector<int>> */ vocabConstraint); 
         // Now, nBestPathScores contain N-best expandedPathScores for each batch and beam,
         // and nBestKeys for each their original location (batchIdx, beamHypIdx, word).
 

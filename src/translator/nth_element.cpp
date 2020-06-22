@@ -26,43 +26,34 @@ public:
                     size_t N,
                     std::vector<float>& outPathScores,
                     std::vector<unsigned>& outKeys,
-                    const bool isFirst) {
+                    const bool isFirst,
+                    std::vector<std::vector<int>> vocabConstraint) {
+    h_res.clear();
+    h_res_idx.clear();
     const auto vocabSize = scores->shape()[-1];
     const auto inputN    = scores->shape()[-2];
     const auto dimBatch  = scores->shape()[-4];
+    
     ABORT_IF(inputN != (isFirst ? 1 : N), "Input tensor has wrong beam dim??"); // @TODO: Remove isFirst argument altogether
     const float* scoresData = scores->data();
 
-    size_t maxSize = N * dimBatch;
-    h_res.resize(maxSize);
-    h_res_idx.resize(maxSize);
-    size_t pos = 0; // iterates through h_res and h_res_idx
-
     size_t batchOffset = inputN * vocabSize;
-    std::vector<int> idxs(batchOffset); // re-used for each batch
-    std::iota(idxs.begin(), idxs.end(), 0);
-
     for(size_t batchIdx = 0; batchIdx < dimBatch; ++batchIdx) {
-
-      std::partial_sort( 
-        // sorts the top N (beam size) idxs by score to the front
-        idxs.begin(),
-        idxs.begin() + N,
-        idxs.end(),
-        [&](int a, int b) { return scoresData[a] > scoresData[b]; }
-      );
-
-      // copy top N idxs and scores to return vectors
-      for(size_t i = 0; i < N; ++i) {
-        int idx = idxs[i];
-        // since idxs is re-used for each batch, add batch offset to each idx to get absolute position
-        h_res_idx[pos] = idx + batchIdx * batchOffset;
-        h_res[pos] = scoresData[idx];
-        ++pos;
+      if (vocabConstraint[batchIdx].size() > 0) {
+        std::vector<int> idxs = vocabConstraint[batchIdx];
+        std::partial_sort(
+          idxs.begin(),
+          idxs.begin() + std::min(N, idxs.size()),
+          idxs.end(),
+          [&](int a, int b) {return scoresData[a] > scoresData[b]; }
+        );
+        for(int temp = 0; temp < std::min(N, idxs.size()); ++temp) {
+          int idx = idxs[temp];
+          h_res_idx.push_back(idx + batchIdx * batchOffset);
+          h_res.push_back(scoresData[idx]);
+        }
+        scoresData += batchOffset; //advance score pointer to start of next batch
       }
-
-      // advance pointer to next batch's beginning
-      scoresData += batchOffset;
     }
     getPairs(/*cumulativeBeamSizes.back(),*/ outKeys, outPathScores);
   }
@@ -97,8 +88,8 @@ GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId d
   deviceId; beamSize; dimBatch; // (unused)
 #endif
   auto nth = New<NthElementCPU>();
-  return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst) {
-    return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst);
+  return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst, std::vector<std::vector<int>> vocabConstraint) {
+    return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst, vocabConstraint);
   };
 }
 

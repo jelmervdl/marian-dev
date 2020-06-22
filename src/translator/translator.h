@@ -147,7 +147,10 @@ public:
         }
 
         auto search = New<Search>(options_, scorers, trgVocab_);
-        auto histories = search->search(graph, batch);
+
+        std::vector<int> sourceSent;
+        std::cout << batch->getSentenceIds()[0];
+        auto histories = search->search(graph, batch, sourceSent);
 
         for(auto history : histories) {
           std::stringstream best1;
@@ -256,6 +259,8 @@ public:
 
     {
       ThreadPool threadPool_(numDevices_, numDevices_);
+
+      
 
       for(auto batch : batchGenerator) {
 
