@@ -478,10 +478,41 @@ public:
 
         //**********************************************************************
         // perform beam search
+
+        int vocabSize = expandedPathScores->shape()[-1];
         std::vector<std::vector<int>> vocabConstraint(1);
-        for (int temp : sourceSent) {
-          vocabConstraint[0].push_back(temp);
+
+        if (t == 0 && factorGroup == 0) {
+          // first step must generate the first word in source sentence.
+          vocabConstraint[0].push_back(sourceSent[0]); 
+        } else {
+        // for (int i = 0; i < origDimBatch; i++) { // loop over Beams in a batch
+        // ONLY work for SINGLE-sentence decoding
+          for (int j = 0; j < beams[0].size(); j++) { // loop over Hypotheses in a Beam
+
+            Words temp_words = beams[0][j]->tracebackWords();
+            int a = 0, b = 0; // a for words in hyp, b for words in source.
+
+            while (a < temp_words.size()) {
+              if (temp_words[a].toWordIndex() == sourceSent[b]) {
+                a++;
+                b++;
+              } else {
+                if (temp_words[a].toWordIndex() == 2) { // 2 is delimiter token
+                  a++;
+                }
+              }
+            }
+
+            vocabConstraint[0].push_back(sourceSent[b] + j * vocabSize);
+            if (temp_words[a - 1].toWordIndex() != 2) {
+              // if partial hyp ends with an actual token, then it is allowed to produce delimiter in next step.
+              vocabConstraint[0].push_back(2 + j * vocabSize);
+            }
+          }
+            
         }
+        // }
 
         // find N best amongst the (maxBeamSize * dimVocab) hypotheses
         std::vector<unsigned int> nBestKeys; // [currentDimBatch, maxBeamSize] flattened -> (batchIdx, beamHypIdx, word idx) flattened

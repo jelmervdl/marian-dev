@@ -147,9 +147,10 @@ public:
         }
 
         auto search = New<Search>(options_, scorers, trgVocab_);
-
         std::vector<int> sourceSent;
-        std::cout << batch->getSentenceIds()[0];
+        for (auto word : batch->front()->data()) {
+          sourceSent.push_back(word.toWordIndex());
+        }
         auto histories = search->search(graph, batch, sourceSent);
 
         for(auto history : histories) {
@@ -161,7 +162,6 @@ public:
                            bestn.str(),
                            doNbest);
         }
-
 
         // progress heartbeat for MS-internal Philly compute cluster
         // otherwise this job may be killed prematurely if no log for 4 hrs
