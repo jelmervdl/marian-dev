@@ -137,7 +137,7 @@ GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId d
   auto nth = New<NthElementCPU>();
   return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst, 
     /* size_t t,*/ float beamSizeDivideBy, size_t beamSizeDivideMin, std::vector<std::vector<int>>& trieVocabIdxs, float * cputensor=nullptr) {
-    return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst, /* t */, beamSizeDivideBy, beamSizeDivideMin, trieVocabIdxs, cputensor);
+    return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst, /* t, */ beamSizeDivideBy, beamSizeDivideMin, trieVocabIdxs, cputensor);
   };
 }
 
