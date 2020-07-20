@@ -7,7 +7,7 @@
 #include <Windows.h>
 #endif
 
-// https://stackoverflow.com/questions/180947/base64-decode-snippet-in-c
+// base64: https://stackoverflow.com/questions/180947/base64-decode-snippet-in-c
 static const std::string base64_chars = 
              "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
              "abcdefghijklmnopqrstuvwxyz"
@@ -15,6 +15,49 @@ static const std::string base64_chars =
 
 static inline bool is_base64(unsigned char c) {
   return (isalnum(c) || (c == '+') || (c == '/'));
+}
+
+std::string base64_encode(unsigned char const* bytes_to_encode, unsigned int in_len) {
+  std::string ret;
+  int i = 0;
+  int j = 0;
+  unsigned char char_array_3[3];
+  unsigned char char_array_4[4];
+
+  while (in_len--) {
+    char_array_3[i++] = *(bytes_to_encode++);
+    if (i == 3) {
+      char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
+      char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+      char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+      char_array_4[3] = char_array_3[2] & 0x3f;
+
+      for(i = 0; (i <4) ; i++)
+        ret += base64_chars[char_array_4[i]];
+      i = 0;
+    }
+  }
+
+  if (i)
+  {
+    for(j = i; j < 3; j++)
+      char_array_3[j] = '\0';
+
+    char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
+    char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+    char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+    char_array_4[3] = char_array_3[2] & 0x3f;
+
+    for (j = 0; (j < i + 1); j++)
+      ret += base64_chars[char_array_4[j]];
+
+    while((i++ < 3))
+      ret += '=';
+
+  }
+
+  return ret;
+
 }
 
 std::string base64_decode(std::string const& encoded_string) {
@@ -54,34 +97,32 @@ int main(int argc, char** argv) {
   using namespace marian;
   auto options = parseOptions(argc, argv, cli::mode::translation);
 
-  std::ifstream input(options->get<std::string>("trie-pruning-path-file"));
-  // each line contains a pair of domains in source and target, separated by a tab.
+  std::ifstream input(options->get<std::string>("file-to-trie-align"));
 
   for( std::string line; getline( input, line ); ) {
-    boost::trim_right(line);
+    // boost::trim_right(line);
     size_t pos = line.find('\t');
     std::string srcBase64Encoded = line.substr(0, pos);
     std::string trgBase64Encoded = line.substr(pos + 1, line.length() - pos);
 
-    std::ofstream source_file;
-    source_file.open("temp_source");
-    source_file << base64_decode(srcBase64Encoded);
-    source_file.close();
-    std::ofstream target_file;
-    target_file.open("temp_target");
-    target_file << base64_decode(trgBase64Encoded);
-    target_file.close();
+    std::ofstream target_trie_file;
+    target_trie_file.open("temp_target");
+    target_trie_file << base64_decode(trgBase64Encoded);
+    target_trie_file.close();
 
     options->set("trie-pruning-path", "temp_target");
     auto task = New<TranslateService<BeamSearch>>(options);
 
-    std::ifstream ifs("temp_source");
-    std::string inputText( (std::istreambuf_iterator<char>(ifs) ),
-                           (std::istreambuf_iterator<char>()    ) );
+    auto outputText = task->run(base64_decode(srcBase64Encoded));
 
-    auto outputText = task->run(inputText);
-    LOG(info, "{}\n", outputText);
-    remove("temp_source");
+    std::ofstream outfile;
+    outfile.open(options->get<std::string>("output"), std::ios_base::app);
+    outfile << srcBase64Encoded + "\t" + 
+                  base64_encode(
+                    reinterpret_cast<const unsigned char *>(outputText.data()),
+                    outputText.length()
+                  ) 
+            << std::endl;
     remove("temp_target");
   }
   return 0;

@@ -41,7 +41,7 @@ public:
         beamSize_(options_->get<size_t>("beam-size")),
         trgVocab_(trgVocab),
         trie_(trie) {
-          if (options_->get<std::string>("trie-pruning-path-file") != "") {
+          if (options_->get<std::string>("trie-pruning-path") != "") {
             triePrune_ = true;
           }
           beamSizeDivideBy = options_->get<float>("beam-size-divide-by");
