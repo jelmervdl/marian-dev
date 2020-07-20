@@ -85,7 +85,7 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
         std::partial_sort(
           idxs.begin(),
           // idxs.begin() + std::min(dynamic_N, idxs.size()), // only sort min(max_beam_size, num_of_continuations) 
-          idxs.begin() + std::min(dynamic_N, idxs.size()), // only sort min(max_beam_size, num_of_continuations) 
+          idxs.begin() + std::min(N, idxs.size()), // only sort min(max_beam_size, num_of_continuations) 
           idxs.end(),
           [&](int a, int b) {return scoresData[a] > scoresData[b]; } // compare by score. note a and b are with offset
         );
