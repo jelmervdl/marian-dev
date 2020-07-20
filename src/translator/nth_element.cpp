@@ -34,8 +34,8 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
                     std::vector<unsigned>& outKeys,
                     const bool isFirst,
                     // size_t t,
-                    float beamSizeDivideBy,
-                    size_t beamSizeDivideMin,
+                    // float beamSizeDivideBy,
+                    // size_t beamSizeDivideMin,
                     std::vector<std::vector<int>>& trieVocabIdxs,
                     float * cpumem) {
     
@@ -136,8 +136,8 @@ GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId d
 #endif
   auto nth = New<NthElementCPU>();
   return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst, 
-    /* size_t t,*/ float beamSizeDivideBy, size_t beamSizeDivideMin, std::vector<std::vector<int>>& trieVocabIdxs, float * cputensor=nullptr) {
-    return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst, /* t, */ beamSizeDivideBy, beamSizeDivideMin, trieVocabIdxs, cputensor);
+    /* size_t t, float beamSizeDivideBy, size_t beamSizeDivideMin,*/ std::vector<std::vector<int>>& trieVocabIdxs, float * cputensor=nullptr) {
+    return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst, /* t, beamSizeDivideBy, beamSizeDivideMin, */ trieVocabIdxs, cputensor);
   };
 }
 

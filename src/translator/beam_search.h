@@ -356,16 +356,15 @@ public:
     IndexType currentDimBatch = origDimBatch;
     auto prevBatchIdxMap = batchIdxMap; // [origBatchIdx -> currentBatchIdx] but shifted by one time step
     
-
-    std::map<int, std::string> vocabMap;
-    std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
-    int count = 0;
-    for( std::string line; getline( input, line ); ) {
-      boost::trim_right(line);
-      std::string token = line.substr(0, line.find(": "));
-      vocabMap[count] = token;
-      ++count;
-    }    
+    // std::map<int, std::string> vocabMap;
+    // std::ifstream input( "/home/patrick/Desktop/marian-dev/examples/trieme_new/model/vocab.deen.yml" );
+    // int count = 0;
+    // for( std::string line; getline( input, line ); ) {
+    //   boost::trim_right(line);
+    //   std::string token = line.substr(0, line.find(": "));
+    //   vocabMap[count] = token;
+    //   ++count;
+    // }    
     
     // main loop over output time steps
     for (size_t t = 0; ; t++) {
@@ -559,8 +558,8 @@ public:
                     /*out*/ nBestPathScores, /*out*/ nBestKeys,
                     /*first=*/t == 0 && factorGroup == 0,
                     // t,
-                    beamSizeDivideBy,
-                    beamSizeDivideMin,
+                    // beamSizeDivideBy,
+                    // beamSizeDivideMin,
                     /*trieVocabs=*/trieVocabIdxs, // @TODO: this is only used for checking presently, and should be removed altogether
                     cputensor);
         // Now, nBestPathScores contain N-best expandedPathScores for each batch and beam,

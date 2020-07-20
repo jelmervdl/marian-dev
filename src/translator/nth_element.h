@@ -16,8 +16,8 @@ typedef std::function<void(Tensor logProbs,
                            std::vector<unsigned>& outKeys,
                            const bool isFirst,
                         //    size_t t,
-                           float beamSizeDivideBy,
-                           size_t beamSizeDivideMin,
+                        //    float beamSizeDivideBy,
+                        //    size_t beamSizeDivideMin,
                            std::vector<std::vector<int>>& trieVocabIdxs,
                            float * cputensor)> GetNBestListFn;
 
