@@ -558,7 +558,7 @@ public:
                     /*N=*/ maxBeamSize,              // desired beam size
                     /*out*/ nBestPathScores, /*out*/ nBestKeys,
                     /*first=*/t == 0 && factorGroup == 0,
-                    t,
+                    // t,
                     beamSizeDivideBy,
                     beamSizeDivideMin,
                     /*trieVocabs=*/trieVocabIdxs, // @TODO: this is only used for checking presently, and should be removed altogether

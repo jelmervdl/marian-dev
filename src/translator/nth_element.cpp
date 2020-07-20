@@ -13,7 +13,7 @@
 #include <fstream>
 #include <map>
 #include <boost/algorithm/string.hpp>
-#include <math.h>
+// #include <math.h>
 
 namespace marian {
 
@@ -33,7 +33,7 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
                     std::vector<float>& outPathScores,
                     std::vector<unsigned>& outKeys,
                     const bool isFirst,
-                    size_t t,
+                    // size_t t,
                     float beamSizeDivideBy,
                     size_t beamSizeDivideMin,
                     std::vector<std::vector<int>>& trieVocabIdxs,
@@ -55,7 +55,7 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
     const auto vocabSize = scores->shape()[-1];
     const auto inputN    = scores->shape()[-2];
     const auto dimBatch  = scores->shape()[-4];
-    size_t dynamic_N = std::max((size_t)(float(N) / pow(beamSizeDivideBy, t)), beamSizeDivideMin);
+    // size_t dynamic_N = std::max((size_t)(float(N) / pow(beamSizeDivideBy, t)), beamSizeDivideMin);
 
     float* scoresData = nullptr;
     #ifdef CUDA_FOUND
@@ -84,11 +84,13 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
         std::vector<int> idxs = trieVocabIdxs[batchIdx]; // continuations (with offset) for all hyps
         std::partial_sort(
           idxs.begin(),
+          // idxs.begin() + std::min(dynamic_N, idxs.size()), // only sort min(max_beam_size, num_of_continuations) 
           idxs.begin() + std::min(dynamic_N, idxs.size()), // only sort min(max_beam_size, num_of_continuations) 
           idxs.end(),
           [&](int a, int b) {return scoresData[a] > scoresData[b]; } // compare by score. note a and b are with offset
         );
-        for(int temp = 0; temp < std::min(dynamic_N, idxs.size()); ++temp) {
+        // for(int temp = 0; temp < std::min(dynamic_N, idxs.size()); ++temp) {
+        for(int temp = 0; temp < std::min(N, idxs.size()); ++temp) {
           int idx = idxs[temp];
           // move selected idxs to return vector.
           // note idx is with offset for hypotheses but not batch, so add batch offset too
@@ -133,7 +135,8 @@ GetNBestListFn createGetNBestListFn(size_t beamSize, size_t dimBatch, DeviceId d
   deviceId; beamSize; dimBatch; // (unused)
 #endif
   auto nth = New<NthElementCPU>();
-  return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst, size_t t, float beamSizeDivideBy, size_t beamSizeDivideMin, std::vector<std::vector<int>>& trieVocabIdxs, float * cputensor=nullptr) {
+  return [nth](Tensor logProbs, size_t N, std::vector<float>& outCosts, std::vector<unsigned>& outKeys, const bool isFirst, 
+    /* size_t t,*/ float beamSizeDivideBy, size_t beamSizeDivideMin, std::vector<std::vector<int>>& trieVocabIdxs, float * cputensor=nullptr) {
     return nth->getNBestList(logProbs, N, outCosts, outKeys, isFirst, t, beamSizeDivideBy, beamSizeDivideMin, trieVocabIdxs, cputensor);
   };
 }
