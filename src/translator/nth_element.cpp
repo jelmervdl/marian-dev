@@ -94,7 +94,7 @@ void getNBestList(Tensor scores, // [dimBatch, 1, beamSize, dimVocab or dimShort
           int idx = idxs[temp];
           // move selected idxs to return vector.
           // note idx is with offset for hypotheses but not batch, so add batch offset too
-          h_res_idx.push_back(idx + batchIdx * batchOffset); 
+          h_res_idx.push_back((int)(idx + batchIdx * batchOffset)); 
           // scores do not need offset because the pointer gets advanced each time as below.
           h_res.push_back(scoresData[idx]);
         }

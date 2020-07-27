@@ -139,6 +139,10 @@ struct packed16 {
   uint16_t x;
 };
 
+struct intgemm16 {
+  int16_t x;
+};
+
 // small struct to enable templating based on types use for packing. This is a memory holder.
 // There's no difference between packed8avx2 and packed8avx512. But, they are separately defined to be distinguished.
 struct packed8avx2 {
@@ -149,6 +153,11 @@ struct packed8avx2 {
 struct packed8avx512 {
   uint8_t x;
 };
+
+struct intgemm8 {
+  int8_t x;
+};
+
 
 #ifndef __CUDACC__ // vectorized types not available from .cu files
 
@@ -223,6 +232,9 @@ enum class TypeClass : size_t {
   avx2_type     = 0x1000, // processor-specific layout for avx2, currently used for FBGEMM only
   avx512_type   = 0x2000, // processor-specific layout for avx512, currently used for FBGEMM only
 
+  intgemm_type = 0x4000, // intgemm quantized architecture agnostic models
+
+
   size_mask     = 0x00FF,
   class_mask    = 0xFF00
 };
@@ -254,7 +266,9 @@ enum class Type : size_t {
   packed16      = TypeClass::packed_type + 2u,                          // special type for FBGEMM, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint16) is meaningless.
   packed8avx2   = TypeClass::packed_type + 1u + TypeClass::avx2_type,   // special type for FBGEMM with AVX2, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
   packed8avx512 = TypeClass::packed_type + 1u + TypeClass::avx512_type, // special type for FBGEMM with AVX512, not meant to be used anywhere else, not meant to be accessed invidually. Internal actual type (uint8) is meaningless.
-  
+
+  intgemm8      = TypeClass::signed_type + 1u + TypeClass::intgemm_type, // Int8 quantized (not packed) matrices for intgemm
+  intgemm16     = TypeClass::signed_type + 2u + TypeClass::intgemm_type // Int16 quantized (not packed) matrices for intgemm
 };
 
 static inline size_t operator&(TypeClass typeClass, Type type) {
@@ -297,6 +311,10 @@ static inline bool isAvx512(Type type) {
   return (TypeClass::avx512_type & type) != 0;
 }
 
+static inline bool isIntgemm(Type type) {
+  return (TypeClass::intgemm_type & type) != 0;
+}
+
 size_t requiredBytes(const Shape& shape, Type type); // towards Frank's vision of joint Shape/Type
 
 template <typename T>
@@ -321,6 +339,9 @@ template <> inline bool matchType<double>(Type type)   { return type == Type::fl
 template <> inline bool matchType<packed16>(Type type)       { return type == Type::packed16;       }
 template <> inline bool matchType<packed8avx2>(Type type)    { return type == Type::packed8avx2;    }
 template <> inline bool matchType<packed8avx512>(Type type)  { return type == Type::packed8avx512;  }
+
+template <> inline bool matchType<intgemm8>(Type type)    { return type == Type::intgemm8;    }
+template <> inline bool matchType<intgemm16>(Type type)   { return type == Type::intgemm16;  }
 // clang-format on
 
 static inline std::ostream& operator<<(std::ostream& out, Type type) {
@@ -342,6 +363,9 @@ static inline std::ostream& operator<<(std::ostream& out, Type type) {
     case Type::packed16      : out << "packed16"; break;
     case Type::packed8avx2   : out << "packed8avx2"; break;
     case Type::packed8avx512 : out << "packed8avx512"; break;
+
+    case Type::intgemm8   : out << "intgemm8"; break;
+    case Type::intgemm16  : out << "intgemm16"; break;
   }
   return out;
 }
@@ -367,6 +391,9 @@ template <> inline std::string request<double>()   { return "float64"; }
 template <> inline std::string request<packed16>() { return "packed16"; }
 template <> inline std::string request<packed8avx2>()  { return "packed8avx2"; }
 template <> inline std::string request<packed8avx512>()  { return "packed8avx512"; }
+
+template <> inline std::string request<intgemm8>()  { return "intgemm8"; }
+template <> inline std::string request<intgemm16>()  { return "intgemm16"; }
 // clang-format on
 
 static Type inline typeFromString(const std::string& str) {
@@ -394,13 +421,18 @@ static Type inline typeFromString(const std::string& str) {
     return Type::float32;
   if(str == "float64")
     return Type::float64;
-  
+
   if(str == "packed16")
     return Type::packed16;
   if(str == "packed8avx2")
     return Type::packed8avx2;
   if(str == "packed8avx512")
     return Type::packed8avx512;
+
+  if(str == "intgemm8")
+    return Type::intgemm8;
+  if(str == "intgemm16")
+    return Type::intgemm16;
 
   ABORT("Unknown type {}", str);
 }
@@ -426,6 +458,9 @@ template <> inline Type typeId<packed16>()      { return Type::packed16; }
 template <> inline Type typeId<packed8avx2>()   { return Type::packed8avx2; }
 template <> inline Type typeId<packed8avx512>() { return Type::packed8avx512; }
 
+template <> inline Type typeId<intgemm8>()   { return Type::intgemm8; }
+template <> inline Type typeId<intgemm16>()  { return Type::intgemm16; }
+
 // Abort if given C++ does not correspond to runtime type
 template <typename T>
 void matchOrAbort(Type type) {
@@ -437,19 +472,35 @@ void matchOrAbort(Type type) {
 
 namespace typeFitting { // own namespace instead of in class, otherwise we get error "explicit specialization in non-namespace scope"
 
-  // compares max for different types as constexpr, so can be used at compile-time to determine if RequestType type max fits into ReturnType max, see std::conditional below.
-  template <typename RequestType, typename ReturnType>
-  constexpr bool fitsIntoMax() { return std::numeric_limits<RequestType>::max() <= std::numeric_limits<ReturnType>::max(); } // for built-in types everything is constexpr
+  // Helper function for fitsIntoMax() below
+  // Returns the 'capacity' of a type: number of digits for integers,
+  // max_exponent for floats. We ignore the mantissa for floats.
+  template<typename X> constexpr int capacity() {
+    static_assert(std::is_arithmetic<X>::value || std::is_same<X,HalfFloat>::value,
+                  "Wrong type for this template");
+    return (std::is_integral<X>::value
+            ? std::numeric_limits<X>::digits
+            : std::numeric_limits<X>::max_exponent);
+ }
 
-  // add specializations here when needed
-  template <> constexpr bool fitsIntoMax<float16, float>() { return true; };  // for float16 conversion to float is not constexpr, hence specializations
-  template <> constexpr bool fitsIntoMax<float, float16>() { return false; }; // for float16 conversion to float is not constexpr, hence specializations
+
+  // Compare max for different types as constexpr, so can be used at compile-time to determine if RequestType type max fits into ReturnType max, see std::conditional below.
+  template <typename RequestType, typename ReturnType>
+  constexpr bool fitsIntoMax() {
+    // We can't just compare std::numeric_limits<>::max(), because Clang-10
+    // complains about rounding errors when implicitly converting int to float
+    return ((!std::is_integral<RequestType>::value // RequestType is a float
+             && std::is_integral<ReturnType>::value) // ReturnType an integer
+            ? capacity<RequestType>() < capacity<ReturnType>() // special case
+            : capacity<RequestType>() <= capacity<ReturnType>()); // normal case
+  } // for built-in types everything is constexpr
+
 }
 
 template <typename ReturnType>
 class NumericLimits {
 private:
-  
+
   template <typename MaxType> void setLimitsMax() {
     max    = (ReturnType)std::numeric_limits<MaxType>::max();
     lowest = (ReturnType)std::numeric_limits<MaxType>::lowest();
@@ -459,10 +510,14 @@ private:
   void setLimits() {
     // check if the maximum of type RequestType fits into ReturnType
     constexpr bool fits = typeFitting::fitsIntoMax<RequestType, ReturnType>();
+    // sanity check:
+    static_assert(fits || typeFitting::fitsIntoMax<ReturnType, RequestType>(),
+                  "RequestType doesn't fit into ReturnType, and ReturnType doesn't "
+                  "fit into RequestType. fitsIntoMax is broken!");
     // and then use the smaller of each types to determine max, min, lowest.
     using MaxType = typename std::conditional<fits, RequestType, ReturnType>::type;
     setLimitsMax<MaxType>();
-    // @TODO: should we rather abort if the RequestType does not fit into ReturnType instead of clipping to smaller type? 
+    // @TODO: should we rather abort if the RequestType does not fit into ReturnType instead of clipping to smaller type?
     // ABORT_IF(!fits, "Type {} is too small to contain max of type {}", typeId<ReturnType>(), typeId<RequestType>());
   }
 
