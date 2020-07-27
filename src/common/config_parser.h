@@ -135,7 +135,9 @@ private:
   void addSuboptionsDevices(cli::CLIWrapper&);
   void addSuboptionsBatching(cli::CLIWrapper&);
   void addSuboptionsInputLength(cli::CLIWrapper&);
+  void addSuboptionsTSV(cli::CLIWrapper&);
   void addSuboptionsULR(cli::CLIWrapper&);
+  void addSuboptionsIntgemm(cli::CLIWrapper& cli);
 
   // Extract paths to all config files found in the config object.
   // Look at --config option and model.npz.yml files.

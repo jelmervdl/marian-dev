@@ -26,22 +26,26 @@ private:
 
   typedef std::unordered_map<size_t, std::vector<WExpr>> WeakMemory;
   typedef std::unordered_map<size_t, std::vector<Expr>> Memory;
+  //typedef std::unordered_map<std::string, Expr> ShortlistMemory; //Because... yeah
 
   Ptr<WeakMemory> shortterm_;
   Ptr<Memory> longterm_;
+  //Ptr<ShortlistMemory> midterm_;
 
 public:
   Tensors(Ptr<Backend> backend)
       : tensors_(New<TensorAllocator>(backend)),
         cache_(New<TensorAllocator>(backend)),
         shortterm_(New<WeakMemory>()),
-        longterm_(New<Memory>()) {}
+        longterm_(New<Memory>())/*,
+        midterm_(New<ShortlistMemory>())*/ {}
 
   Tensors(Ptr<Backend> backend, Ptr<Device> device)
       : tensors_(New<TensorAllocator>(backend, device)),
         cache_(New<TensorAllocator>(backend)),
         shortterm_(New<WeakMemory>()),
-        longterm_(New<Memory>()) {}
+        longterm_(New<Memory>())/*,
+        midterm_(New<ShortlistMemory>())*/ {}
 
   void reserve(size_t bytes) { tensors_->reserve(bytes); }
 
@@ -65,13 +69,50 @@ public:
 
   void free(const Tensor& tensor) { tensors_->free(tensor); }
 
-  // @TODO: get rid of this, not really used or can be done better
-  Ptr<Allocator> allocator() { return tensors_->allocator(); }
-
+  Ptr<Allocator>       getAllocator() { return tensors_->allocator(); }
+  Ptr<TensorAllocator> getTensorAllocator() { return tensors_; }
+  
   Expr findOrRemember(Expr node) {
     size_t hash = node->hash();
     // memoize constant nodes that are not parameters
     // parameters are already memoized in the graph itself
+
+    // int size1 = 0;
+    // for (auto it = longterm_->begin(); it != longterm_->end(); it++) {
+    //   size1 += it->second.size();
+    // }
+
+    // int size2 = 0;
+    // for (auto it = shortterm_->begin(); it != shortterm_->end(); it++) {
+    //   size2 += it->second.size();
+    // }
+    // std::cerr << "Longterm: " << size1 << " shortterm: " << size2 << std::endl;
+
+    // When we have a shortlist, we're getting screwed by the constantly changing shortlist
+    // Which is necessary for this batch, but not for anything else. The current cache mechanism has no notion of
+    // "Keep those tensors cached but delete them once it is over". Conveniently, they all have different hashes
+    // making it difficult to isolate them inside the longterm memory.
+    // Somewhat less important, the same thing happens with:
+    // F0::none_QuantMultA Type: alphaNodeOp shape: shape=1 size=1  and
+    // none_QuantMultB Type: intgemmQuantMultB shape: shape=1 size=1
+    // But as their sizes are very small, they are less of an issue.
+    // Those are actually constant, but as they have different parents, marian cache doesn't match them.
+    // To fix those, in intgemm_interface we're hashing the name() string and comparing its equality of the equals method.
+    /*if (node->type() == "intgemmSelectColumnsB") {
+      auto it = midterm_->find("intgemmSelectColumnsB");
+      //std::cerr << "Midterm size: " << midterm_->size() << std::endl;
+      if (it != midterm_->end()) {
+        if (it->second->hash() == hash) {
+          return it->second;
+        } else {
+          it->second->free();
+          midterm_->clear();
+        }
+      }
+      (*midterm_)["intgemmSelectColumnsB"] = node;
+      return nullptr;
+
+    } else */
     if(node->type() != "param" && node->memoize()) {
       auto it = longterm_->find(hash);
       if(it != longterm_->end()) {
@@ -85,6 +126,8 @@ public:
           //}
         }
       }
+
+      //std::cerr << "Longterm: " << longterm_->size() << " " << node->name() << " Type: " << node->type() << " shape: " << node->shape() << std::endl;
       (*longterm_)[hash].push_back(node);
     }
 
@@ -96,6 +139,7 @@ public:
         }
       }
     }
+    //std::cerr << "Shortterm size: " << (*shortterm_).size() << " Name: " << node->name() << " Type: " << node->type() << " shape: " << node->shape() << " bucket_size: " << (*shortterm_)[hash].size() << std::endl;
     (*shortterm_)[hash].push_back(node.get()); // weakPtr
     return nullptr;
   }
@@ -115,14 +159,16 @@ typedef std::map<Type, Ptr<Parameters>> ElementTypeParamsMap; // keep it sorted,
 class ExpressionGraph : public std::enable_shared_from_this<ExpressionGraph> {
   size_t count_{0};
 
+  std::unordered_set<Expr> topNodes_; // current set of roots. In the end, all but one must have been consumed.
+
+protected:  // (these are protected, not private, for ONNX exporting)
   std::list<Expr> nodesForward_;
   std::list<Expr> nodesBackward_;
-
-  std::unordered_set<Expr> topNodes_; // current set of roots. In the end, all but one must have been consumed.
 
   // Holds memory and expressions that correspond to temporary expressions.
   // This gets cleared before a new graph is built.
   Ptr<Tensors> tensors_;
+private:
 
   std::unordered_map<size_t, std::vector<Expr>> memoized_;
 
@@ -430,7 +476,7 @@ public:
     ABORT_IF(paramsByElementType_.empty(), "No parameter object has been created");
     
     // Safeguard against accessing parameters from the outside with multiple parameter types, not yet supported
-    ABORT_IF(paramsByElementType_.size() > 1, "Calling of params() is currently not supported with multiple ({}) parameters", paramsByElementType_.size());
+    //ABORT_IF(paramsByElementType_.size() > 1, "Calling of params() is currently not supported with multiple ({}) parameters", paramsByElementType_.size());
     
     // Safeguard against accessing parameters from the outside with other than default parameter type, not yet supported
     auto it = paramsByElementType_.find(defaultElementType_);
@@ -463,8 +509,11 @@ public:
       tensors_->free(tensor);
   }
 
-  // @TODO: get rid of this, not really used or can be done better
-  Ptr<Allocator> allocator() { return tensors_->allocator(); }
+  // Returns the memory allocator of the graph workspace, allocates row unstructured memory (but 256-byte aligned)
+  Ptr<Allocator> allocator() { return tensors_->getAllocator(); } // @TODO: rename this to getAllocator();
+
+  // Returns the tensor allocator of the graph workspace, different from above as proper tensor objects are allocated
+  Ptr<TensorAllocator> getTensorAllocator() { return tensors_->getTensorAllocator(); }
 
   void clear() {
     // clear everything apart from parameters and memoized nodes

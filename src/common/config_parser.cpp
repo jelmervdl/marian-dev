@@ -1,4 +1,5 @@
 #include "common/authors.h"
+#include "common/build_info.h"
 #include "common/cli_helper.h"
 #include "common/config.h"
 #include "common/config_parser.h"
@@ -38,16 +39,14 @@ const std::set<std::string> PATHS = {
   "valid-script-args",
   "valid-log",
   "valid-translation-output",
-  "input",            // except: stdin
-  "output",           // except: stdout
+  "input",            // except: 'stdin', handled in makeAbsolutePaths and interpolateEnvVars
+  "output",           // except: 'stdout', handled in makeAbsolutePaths and interpolateEnvVars
   "pretrained-model",
   "data-weighting",
-  "log"
-  // TODO: Handle the special value in helper functions
-  //"sqlite",         // except: temporary
-  // TODO: This is a vector with a path and some numbers, handle this in helper
-  // functions or separate shortlist path to a separate command-line option
-  //"shortlist",
+  "log",
+  "sqlite",           // except: 'temporary', handled in the processPaths function
+  "shortlist",        // except: only the first element in the sequence is a path, handled in the
+                      //  processPaths function
 };
 // clang-format on
 
@@ -111,6 +110,9 @@ void ConfigParser::addOptionsGeneral(cli::CLIWrapper& cli) {
     "Print list of authors and exit");
   cli.add<bool>("--cite",
     "Print citation and exit");
+  cli.add<std::string>("--build-info",
+    "Print CMake build options and exit. Set to 'all' to print advanced options")
+    ->implicit_val("basic");
   cli.add<std::vector<std::string>>("--config,-c",
     "Configuration file(s). If multiple, later overrides earlier");
   cli.add<size_t>("--workspace,-w",
@@ -371,6 +373,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       "10000u");
 
   addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
 
   // data management options
   cli.add<std::string>("--shuffle",
@@ -493,8 +496,10 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
       {"float32", "float32", "float32"});
   cli.add<std::vector<std::string>>("--cost-scaling",
       "Dynamic cost scaling for mixed precision training: "
-      "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
-  cli.add<bool>("--normalize-gradient", "Normalize gradient by multiplying with no. devices / total labels");
+      "power of 2, scaling window, scaling factor, tolerance, range, minimum factor")
+    ->implicit_val("7.f 2000 2.f 0.05f 10 1.f");
+  cli.add<bool>("--normalize-gradient",
+      "Normalize gradient by multiplying with no. devices / total labels");
 
   // multi-node training
   cli.add<bool>("--multi-node",
@@ -504,7 +509,7 @@ void ConfigParser::addOptionsTraining(cli::CLIWrapper& cli) {
      true);
 
   // add ULR settings
-  addSuboptionsULR(cli); 
+  addSuboptionsULR(cli);
 
   cli.add<std::vector<std::string>>("--task",
      "Use predefined set of options. Possible values: transformer, transformer-big");
@@ -619,12 +624,14 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
       "Keep the output segmented into SentencePiece subwords");
 #endif
 
-  addSuboptionsDevices(cli);
   addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
+  addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
+  addSuboptionsIntgemm(cli);
 
-  cli.add<bool>("--optimize",
-      "Optimize speed aggressively sacrificing memory or precision");
+  cli.add<bool>("--use-legacy-batching",
+      "Use legacy codepath with a for loop of cblas_sgemm, instead of cblas_sgemm_batched.");
   cli.add<bool>("--skip-cost",
       "Ignore model cost during translation, not recommended for beam-size > 1");
   cli.add<bool>("--fp16",
@@ -640,6 +647,9 @@ void ConfigParser::addOptionsTranslation(cli::CLIWrapper& cli) {
   cli.add<bool>("--output-sampling",
      "Noise output layer with gumbel noise",
       false);
+  cli.add<std::vector<int>>("--output-approx-knn",
+     "Use approximate knn search in output layer (currently only in transformer)")
+     ->implicit_val("100 1024");
 
 #if 0 // @TODO: Ask Hany if there are any decoding-time options
   // add ULR settings
@@ -680,11 +690,11 @@ void ConfigParser::addOptionsScoring(cli::CLIWrapper& cli) {
      ->implicit_val("1"),
 
   addSuboptionsInputLength(cli);
+  addSuboptionsTSV(cli);
   addSuboptionsDevices(cli);
   addSuboptionsBatching(cli);
+  addSuboptionsIntgemm(cli);
 
-  cli.add<bool>("--optimize",
-      "Optimize speed aggressively sacrificing memory or precision");
   cli.add<bool>("--fp16",
       "Shortcut for mixed precision inference with float16, corresponds to: --precision float16");
   cli.add<std::vector<std::string>>("--precision",
@@ -772,12 +782,6 @@ void ConfigParser::addSuboptionsBatching(cli::CLIWrapper& cli) {
         {"0"});
     cli.add<bool>("--mini-batch-track-lr",
         "Dynamically track mini-batch size inverse to actual learning rate (not considering lr-warmup)");
-    cli.add<size_t>("--mini-batch-overstuff",
-        "[experimental] Stuff this much more data into a minibatch, but scale down the LR and progress counter",
-        1);
-    cli.add<size_t>("--mini-batch-understuff",
-        "[experimental] Break each batch into this many updates",
-        1);
   }
   // clang-format on
 }
@@ -790,6 +794,15 @@ void ConfigParser::addSuboptionsInputLength(cli::CLIWrapper& cli) {
       defaultMaxLength);
   cli.add<bool>("--max-length-crop",
       "Crop a sentence to max-length instead of omitting it if longer than max-length");
+  // clang-format on
+}
+
+void ConfigParser::addSuboptionsTSV(cli::CLIWrapper& cli) {
+  // clang-format off
+  cli.add<bool>("--tsv",
+      "Tab-separated input");
+  cli.add<size_t>("--tsv-fields",
+      "Number of fields in the TSV input, guessed based on the model type");
   // clang-format on
 }
 
@@ -822,6 +835,26 @@ void ConfigParser::addSuboptionsULR(cli::CLIWrapper& cli) {
   // clang-format on
 }
 
+void ConfigParser::addSuboptionsIntgemm(cli::CLIWrapper& cli) {
+  // clang-format off
+  cli.add<bool>("--int16",
+      "Optimize speed aggressively sacrificing memory or precision by using 16bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int16");
+  cli.add<bool>("--int8",
+      "Optimize speed even more aggressively sacrificing memory or precision by using 8bit integer GEMM with intgemm instead of floats. Only available on CPU. Corresponds to --gemm-precision int8");
+  cli.add<bool>("--int8shift",
+      "Use a faster, shifted integer 8bit GEMM implementation. Corresponds to --gemm-precision int8shift");
+  cli.add<bool>("--int8shiftAlpha",
+      "Use a faster, shifted integer 8bit GEMM implementation, with precomputed alphas. Corresponds to --gemm-precision int8shiftAlpha");
+  cli.add<bool>("--int8shiftAll",
+      "Use a faster, shifted integer 8bit GEMM implementation even for matrices that don't have a bias. Beneficial on VNNI. Corresponds to --gemm-precision int8shiftAll");
+  cli.add<bool>("--int8shiftAlphaAll",
+      "Use a faster, shifted integer 8bit GEMM implementation even for matrices that don't have a bias, with precomputed alphas. Should be the fastest option. Corresponds to --gemm-precision int8shiftAlphaAll");
+  cli.add<std::string>("--gemm-precision",
+      "Use lower precision for the GEMM operations only. Supported values: float32, int16, int8, int8shift, int8shiftAlpha, int8shiftAll, int8shiftAlphaAll", "float32");
+  cli.add<bool>("--dump-quantmult",
+      "Dump the quantization multipliers of activation matrices during an avarage run. To be used to precompute alphas for ---gemm-precision int8shiftAlpha or int8shiftAlphaAll.");
+  // clang-format on
+}
 
 cli::mode ConfigParser::getMode() const { return mode_; }
 
@@ -841,6 +874,19 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
     exit(0);
   }
 
+  auto buildInfo = get<std::string>("build-info");
+  if(!buildInfo.empty() && buildInfo != "false") {
+#ifndef _MSC_VER // cmake build options are not available on MSVC based build.
+    if(buildInfo == "all")
+      std::cerr << cmakeBuildOptionsAdvanced() << std::endl;
+    else
+      std::cerr << cmakeBuildOptions() << std::endl;
+    exit(0);
+#else // _MSC_VER
+    ABORT("build-info is not available on MSVC based build.");
+#endif // _MSC_VER
+  }
+
   // get paths to extra config files
   auto configPaths = findConfigPaths();
   if(!configPaths.empty()) {
@@ -851,7 +897,22 @@ Ptr<Options> ConfigParser::parseOptions(int argc, char** argv, bool doValidate){
   }
 
   if(get<bool>("interpolate-env-vars")) {
-    cli::processPaths(config_, cli::InterpolateEnvVars, PATHS);
+    cli::processPaths(config_, cli::interpolateEnvVars, PATHS);
+  }
+
+  // Option shortcuts for input from STDIN for trainer and scorer
+  if(mode_ == cli::mode::training || mode_ == cli::mode::scoring) {
+    auto trainSets = get<std::vector<std::string>>("train-sets");
+    YAML::Node config;
+    // Assume the input will come from STDIN if --tsv is set but no --train-sets are given
+    if(get<bool>("tsv") && trainSets.empty()) {
+      config["train-sets"].push_back("stdin");
+    // Assume the input is in TSV format if --train-sets is set to "stdin"
+    } else if(trainSets.size() == 1 && (trainSets[0] == "stdin" || trainSets[0] == "-")) {
+      config["tsv"] = true;
+    }
+    if(!config.IsNull())
+      cli_.updateConfig(config, cli::OptionPriority::CommandLine, "A shortcut for STDIN failed.");
   }
 
   if(doValidate) {
@@ -891,12 +952,12 @@ std::vector<std::string> ConfigParser::findConfigPaths() {
     for(auto& path : paths) {
       // (note: this updates the paths array)
       if(interpolateEnvVars)
-        path = cli::InterpolateEnvVars(path);
+        path = cli::interpolateEnvVars(path);
     }
   } else if(mode_ == cli::mode::training) {
     auto path = config_["model"].as<std::string>() + ".yml";
     if(interpolateEnvVars)
-      path = cli::InterpolateEnvVars(path);
+      path = cli::interpolateEnvVars(path);
 
     bool reloadConfig = filesystem::exists(path) && !get<bool>("no-reload");
     if(reloadConfig)
@@ -922,7 +983,7 @@ YAML::Node ConfigParser::loadConfigFiles(const std::vector<std::string>& paths) 
                                  && config["interpolate-env-vars"].as<bool>())
                                 || get<bool>("interpolate-env-vars");
       if(interpolateEnvVars)
-        cli::processPaths(config, cli::InterpolateEnvVars, PATHS);
+        cli::processPaths(config, cli::interpolateEnvVars, PATHS);
 
       // replace relative path w.r.t. the config file
       cli::makeAbsolutePaths(config, path, PATHS);
