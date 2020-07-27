@@ -100,10 +100,9 @@ int main(int argc, char** argv) {
   std::ifstream input(options->get<std::string>("file-to-trie-align"));
 
   for( std::string line; getline( input, line ); ) {
-    // boost::trim_right(line);
     size_t pos = line.find('\t');
     std::string srcBase64Encoded = line.substr(0, pos);
-    std::string trgBase64Encoded = line.substr(pos + 1, line.length() - pos);
+    std::string trgBase64Encoded = line.substr(pos + 1, line.length() - pos - 1); // -1 to not include EOL
 
     std::ofstream target_trie_file;
     target_trie_file.open("temp_target");
