@@ -20,18 +20,18 @@ public:
     uint16_t id_;
     std::vector<Node> next_level;
 
-    bool operator<(const Node& other) {
+    bool operator<(const Node& other) const {
         return id_ < other.id_;
     }
-    bool operator<(const uint16_t& other) {
+    bool operator<(const uint16_t& other) const {
         return id_ < other;
     }
 
-    bool operator==(const Node& other) {
+    bool operator==(const Node& other) const {
         return id_ == other.id_;
     }
 
-    bool operator==(const uint16_t& other) {
+    bool operator==(const uint16_t& other) const {
         return id_ == other;
     }
 

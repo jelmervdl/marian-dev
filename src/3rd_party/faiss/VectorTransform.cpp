@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstring>
 #include <memory>
+#include <immintrin.h>
 
 #include <faiss/utils/random.h>
 #include "common/logging.h"
