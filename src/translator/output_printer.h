@@ -65,6 +65,7 @@ public:
 
     auto result = history->top();
     auto words = std::get<0>(result);
+    const auto& hypo = std::get<1>(result);
 
     if(reverse_)
       std::reverse(words.begin(), words.end());
@@ -73,13 +74,21 @@ public:
 
     best1 << translation;
     if(!alignment_.empty()) {
-      const auto& hypo = std::get<1>(result);
       best1 << " ||| " << getAlignment(hypo);
     }
 
     if(wordScores_) {
-      const auto& hypo = std::get<1>(result);
       best1 << " ||| WordScores=" << getWordScores(hypo);
+    }
+
+    // If we're in trie alignment mode, print the line numbers of the lines where
+    // this sentence occurs. Note that the hypothesis points to the last word, but
+    // the line numbers are attached to the end-sentence marker
+    if (hypo->GetTrieNode()) {
+      ABORT_IF(hypo->GetTrieNode()->next_level.size() != 1, "Expected exactly one node at the end");
+      const auto& leaf = hypo->GetTrieNode()->next_level[0];
+      best1 << " ||| ";
+      std::copy(leaf.lines.begin(), leaf.lines.end(), std::ostream_iterator<size_t>(best1, " "));
     }
 
     best1 << std::flush;
