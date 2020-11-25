@@ -47,14 +47,36 @@ public:
     }
 };
 
-class trieMeARiver {
+class MapVocab {
 private:
-    std::vector<Node> trie_;
     std::unordered_map<std::string, uint16_t> dict_;
     std::unordered_map<uint16_t, std::string> vocab_;
+    std::string unknown_;
 public:
-    trieMeARiver(std::unordered_map<std::string, uint16_t> dict,
-        std::unordered_map<uint16_t, std::string> vocab) : dict_(dict), vocab_(vocab) {
+    MapVocab(std::unordered_map<std::string, uint16_t> &&dict, std::unordered_map<uint16_t, std::string> &&vocab) : dict_(dict), vocab_(vocab), unknown_("<unknown>") {
+        
+    }
+
+    uint16_t operator[](std::string const& word) const {
+        auto it = dict_.find(word);
+        return it == dict_.end() ? 1 : it->second;
+    }
+
+    std::string const& operator[](uint16_t id) const {
+        auto it = vocab_.find(id);
+        return it == vocab_.end() ? unknown_ : it->second;
+    }
+};
+
+template <class Vocab = MapVocab>
+class trieMeARiver {
+private:
+    size_t line_count;
+    Node trie_;
+    Vocab vocab_;
+public:
+    template <class... Params>
+    trieMeARiver(Params&&... params) : line_count(0), trie_(0), vocab_(std::forward<Params>(params)...) {
         //This should be done in order in order to avoid the sort at the end
         /*
         for (auto&& item : vocab_) {
@@ -71,7 +93,8 @@ public:
         Node* curr_level = &trie_;
 
         for (auto&& item : tokens) {
-            uint16_t id = dict_.at(item);
+            try {
+                uint16_t id = vocab_[item];
                 auto it = binarySearch(curr_level->next_level.begin(), curr_level->next_level.end(), id);
                 if (it == curr_level->next_level.end()) {
                     curr_level->next_level.emplace_back(Node(id));
@@ -85,6 +108,11 @@ public:
                 } else {
                     curr_level = &*it;
                 }
+            } catch(std::out_of_range) {
+              std::stringstream err;
+              err << "trieMeARiver::operator(): could not find token '" << item
+                  << "' in dictionary";
+              throw std::out_of_range(err.str());
             }
         }
 
@@ -96,6 +124,7 @@ public:
     }
 
     /*The rest of the find functions are for testing/debugging purposes*/
+    /*
     std::string find(std::string input) {
         std::vector<Node>* curr_level = &trie_;
 
@@ -118,7 +147,31 @@ public:
         }
         return ret;
     }
+    */
 
+    std::ostream &printTrie(std::ostream &out) const {
+        printNode(out, trie_, "+");
+        return out;
+    }
+
+    std::ostream &printNode(std::ostream &out, Node const &node, std::string const &prefix) const {
+        std::stringstream sout;
+        sout << prefix << " - " << vocab_[node.id_];
+
+        if (!node.lines.empty()) {
+            sout << "(";
+            std::copy(node.lines.begin(), node.lines.end(), std::ostream_iterator<size_t>(sout, ","));
+            sout << ")";
+        }
+
+        if(node.next_level.empty())
+            out << sout.str() << "\n";
+        else
+            for(Node const& child : node.next_level)
+            printNode(out, child, sout.str());
+
+        return out;
+    }
 };
 
 inline const Node* find(uint16_t id, const Node* root) {

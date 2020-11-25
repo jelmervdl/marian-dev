@@ -40,8 +40,10 @@ public:
 
   /* @TODO this one has the side effect of updating the trie node */
   bool hasTrieContinuatuions() {
+    // throw std::runtime_error("Current implementation of hasTrieContinuatuions is baaad");
+
     //Assume matching vocabulary IDs. Will break otherwise.
-    currTrieNode_ = trieannosaurus::trieMeARiver::find(word_.wordId_, currTrieNode_);
+    currTrieNode_ = trieannosaurus::find(word_.wordId_, currTrieNode_);
     if (currTrieNode_) {
       return true;
     } else {

@@ -1,4 +1,5 @@
 #pragma once
+#include <iostream>
 
 #include "data/batch_generator.h"
 #include "data/corpus.h"
@@ -22,6 +23,27 @@
 #include "3rd_party/mio/mio.hpp"
 #endif
 
+namespace {
+
+class JustInVocab {
+private:
+  marian::Ptr<marian::Vocab> vocab_;
+public:
+  JustInVocab(marian::Ptr<marian::Vocab> vocab) : vocab_(vocab) {
+    //
+  }
+  
+  virtual uint16_t operator[](std::string const& word) const {
+    return (*vocab_)[word].toWordIndex();
+  }
+
+  virtual std::string const& operator[](uint16_t id) const {
+    return (*vocab_)[marian::Word(id)];
+  }
+};
+
+}
+
 namespace marian {
 
 template <class Search>
@@ -38,7 +60,7 @@ private:
   size_t numDevices_;
 
    // trie stuff
-  std::unique_ptr<trieannosaurus::trieMeARiver> trieConstructor_;
+  std::unique_ptr<trieannosaurus::trieMeARiver<::JustInVocab>> trieConstructor_;
 
 #if MMAP
   std::vector<mio::mmap_source> mmaps_;
@@ -78,6 +100,7 @@ public:
          * the downside is that we read through the corpora twice
          * but more importantly @TODO unk handling might potentially lead to wrong results
          * @TODO to really fix the unk handling and do this better */
+        /*
         trieannosaurus::MakeVocab vocabTMP;
         trieannosaurus::readFileByLine(inputTrieFile, vocabTMP, "Building vocabulary...");
         
@@ -92,9 +115,26 @@ public:
           dict[key] = (*trgVocab_)[key].wordId_;
           vocab[(*trgVocab_)[key].wordId_] = key;
         }
-      trieConstructor_.reset(new trieannosaurus::trieMeARiver(dict, vocab));
-      trieannosaurus::readFileByLine(inputTrieFile,
-                                    *trieConstructor_, "Constructing monolingual trie...");
+        */
+
+        // Okay, so what was the point of first making our own token->id mapping
+        // while then replacing it by the vocab from trgVocab? It makes dict/vocab
+        // smaller? It gives us key? Do we need key? Can't we just inverse trgVocab?
+
+        trieConstructor_.reset(new trieannosaurus::trieMeARiver<JustInVocab>(trgVocab_));
+        trieannosaurus::readFileByLine(inputTrieFile,
+                                      *trieConstructor_, "Constructing monolingual trie...");
+
+        // I want to see the tree. So print it for me please. To a file, because it's
+        // probably quite sizeable. I'm just writing prose now, no need for his comment
+        // really but I'm in the mood to type something instead of waiting for my
+        // compiler to finish. End of story. See you another day.
+
+        {
+          std::cerr << "Printing trie to trie.txt" << std::endl;
+          std::ofstream trie_out("trie.txt");
+          trieConstructor_->printTrie(trie_out) << std::endl;
+        }
       }
     }
 
@@ -229,7 +269,7 @@ private:
   size_t numDevices_;
   
   // trie stuff
-  std::unique_ptr<trieannosaurus::trieMeARiver> trieConstructor_;
+  std::unique_ptr<trieannosaurus::trieMeARiver<>> trieConstructor_;
 
 public:
   virtual ~TranslateService() {}
@@ -279,7 +319,7 @@ public:
           dict[key] = (*trgVocab_)[key].wordId_;
           vocab[(*trgVocab_)[key].wordId_] = key;
         }
-      trieConstructor_.reset(new trieannosaurus::trieMeARiver(dict, vocab));
+      trieConstructor_.reset(new trieannosaurus::trieMeARiver<>(dict, vocab));
       trieannosaurus::readFileByLine(inputTrieFile,
                                     *trieConstructor_, "Constructing monolingual trie...");
       }
