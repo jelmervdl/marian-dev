@@ -27,7 +27,7 @@ private:
   bool triePrune_ = false;
   size_t beamSizeDivideBy;
   size_t beamSizeDivideMin;
-  std::vector<trieannosaurus::Node>* trie_;
+  trieannosaurus::Node const * trie_;
 
 //  static constexpr auto INVALID_PATH_SCORE = -9999; // (@TODO: change to -9999.0 once C++ allows that)
 //  static constexpr auto PURGE_BATCH = true; // @TODO: diagnostic, to-be-removed once confirmed there are no issues.
@@ -40,7 +40,7 @@ public:
   BeamSearch(Ptr<Options> options,
              const std::vector<Ptr<Scorer>>& scorers,
              const Ptr<const Vocab> trgVocab,
-             std::vector<trieannosaurus::Node>* trie=nullptr)
+             const trieannosaurus::Node* trie=nullptr)
       : options_(options),
         scorers_(scorers),
         beamSize_(options_->get<size_t>("beam-size")),
@@ -552,16 +552,28 @@ public:
         int vocabSize = expandedPathScores->shape()[-1];
         std::vector<std::vector<int>> trieVocabIdxs(dimBatch);
 
+        // beams[batch_idx][beam_idx][hypothesis_idx] : Hypothesis
+
         size_t trieVocabBatchIdx = 0;
-        for (int i = 0; i < origDimBatch; i++) { // loop over sentences in a batch
-          for (int j = 0; j < beams[i].size(); j++) { // loop over hypotheses for a sentence
-            auto curTrieNode = beams[i][j]->GetTrieNode();
-            if (curTrieNode != nullptr) { // check for null pointers
-              for(auto&& node : *curTrieNode) {
-                // in each batch, the indices are original vocab_id plus hypothesis offset.
-                trieVocabIdxs[trieVocabBatchIdx].push_back(node.id_ + j * vocabSize);
+        for (int batch_idx = 0; batch_idx < origDimBatch; batch_idx++) { // loop over sentences in a batch
+          for (int beam_idx = 0; beam_idx < beams[batch_idx].size(); beam_idx++) { // loop over hypotheses for a sentence
+            auto curTrieNode = beams[batch_idx][beam_idx]->GetTrieNode();
+            if (curTrieNode) {
+              if (!curTrieNode->next_level.empty()) {
+                for(auto&& node : curTrieNode->next_level) {
+                  // in each batch, the indices are original vocab_id plus hypothesis offset.
+                  trieVocabIdxs[trieVocabBatchIdx].push_back(node.id_ + beam_idx * vocabSize);
+                }
+              } else {
+                std::cerr << "empty leaf '" << (*trgVocab_)[Word(curTrieNode->id_)] << "'" << std::endl;
               }
+            } else {
+              trieVocabIdxs[trieVocabBatchIdx].resize(vocabSize);
+
+              // Make all the words viable options. The indices are original vocab_id plus hypothesis offset.
+              std::iota(trieVocabIdxs[trieVocabBatchIdx].begin(), trieVocabIdxs[trieVocabBatchIdx].end(), beam_idx * vocabSize);
             }
+            
             if (t == 0 && factorGroup == 0) {
               break; // break so we do not "overshoot" given score matrix shape
             }
@@ -630,7 +642,8 @@ public:
         for(auto&& beam : beams) {
           // int hypCounter = 0;
           for (auto&& hyp : beam) {
-            if (!hyp->hasTrieContinuatuions()) {
+
+            if (!hyp->hasTrieContinuatuions()) { // JELMER: Why here, and not in toHyps?
               // should never reach here
               // std::cout << "batch: " << batchCounter << ", hyp: " << hypCounter << " not-in-trie-WARNING\n";
             }

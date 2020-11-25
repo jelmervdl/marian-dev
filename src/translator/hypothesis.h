@@ -19,7 +19,7 @@ public:
 private:
   // Constructors are private, use Hypothesis::New(...)
 
-  Hypothesis(std::vector<trieannosaurus::Node>* currTrieNode) : prevHyp_(nullptr), prevBeamHypIdx_(0), word_(Word::ZERO), pathScore_(0.0), currTrieNode_(currTrieNode), length_(0) {}
+  Hypothesis(trieannosaurus::Node const * currTrieNode) : prevHyp_(nullptr), prevBeamHypIdx_(0), word_(Word::ZERO), pathScore_(0.0), currTrieNode_(currTrieNode), length_(0) {}
 
   Hypothesis(const PtrType prevHyp,
              Word word,
@@ -49,7 +49,7 @@ public:
     }
   }
 
-  std::vector<trieannosaurus::Node>* GetTrieNode() { return currTrieNode_; }
+  trieannosaurus::Node const * GetTrieNode() const { return currTrieNode_; }
 
   size_t GetLength() const { return length_; }
 
@@ -103,7 +103,7 @@ private:
   const size_t prevBeamHypIdx_;
   const Word word_;
   const float pathScore_;
-  std::vector<trieannosaurus::Node>* currTrieNode_;
+  trieannosaurus::Node const * currTrieNode_;
 
   std::vector<float> scoreBreakdown_; // [num scorers]
   std::vector<float> alignment_;

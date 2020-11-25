@@ -35,8 +35,8 @@ inline void ProgresBar(size_t cur_pos, size_t len, int barWidth) {
 }
 
 /*Adapted from https://www.bfilipek.com/2018/07/string-view-perf-followup.html . We should probably go string_view way*/
-inline void tokenizeSentence(std::string& str, std::vector<std::string>& output, bool addEoS=false,
- std::string delimeter = " ") {
+inline void tokenizeSentence(const std::string& str, std::vector<std::string>& output, bool addEoS=false,
+ const std::string delimeter = " ") {
     auto first = std::begin(str);
 
     while (first != str.end()) {
@@ -63,7 +63,7 @@ private:
     std::unordered_map<uint16_t, std::string> outmap;
     uint16_t vID = 0;
 public:
-    void operator()(std::string& line) {
+    void operator()(const std::string& line) {
         std::vector<std::string> tokens;
         tokenizeSentence(line, tokens, true);
         for (auto&& item : tokens) {

@@ -1,5 +1,6 @@
 #include "parser.h"
 #include <algorithm>
+#include <sstream>
 
 namespace trieannosaurus {
 
@@ -8,7 +9,7 @@ template<class Iter, class T>
 Iter binarySearch(Iter begin, Iter end, T& val) {
     Iter i = std::lower_bound(begin, end, val);
 
-    if (i != end && !(val < *i))
+    if (i != end && *i == val)
         return i; // found
     else
         return end; // not found
@@ -18,7 +19,12 @@ Iter binarySearch(Iter begin, Iter end, T& val) {
 class Node {
 public:
     uint16_t id_;
+    std::vector<size_t> lines;
     std::vector<Node> next_level;
+
+    explicit Node(uint16_t id) : id_(id) {
+        //
+    }
 
     bool operator<(const Node& other) const {
         return id_ < other.id_;
@@ -58,48 +64,37 @@ public:
         }
         std::sort(trie_.begin(), trie_.end());*/
     }
-    void operator()(std::string& line) {
+    void operator()(const std::string& line) {
         std::vector<std::string> tokens;
         tokenizeSentence(line, tokens, true);
 
-        std::vector<Node>* curr_level = &trie_;
+        Node* curr_level = &trie_;
 
         for (auto&& item : tokens) {
             uint16_t id = dict_.at(item);
-            Node tmp;
-            tmp.id_ = id;
-            auto it = binarySearch(curr_level->begin(), curr_level->end(), tmp);
-            if (it == curr_level->end()) {
-                curr_level->emplace_back(tmp);
-                std::sort(curr_level->begin(), curr_level->end());
-                //std::sort changes the address of the vector in the node so we can't save a pointer to it and save oursaves a search
-                //We can definitely do it better.
-                //std::vector<Node>* nxt_lvl = &curr_level->back().next_level;
-                //std::sort(curr_level->begin(), curr_level->end());
-                //curr_level = nxt_lvl; produces wrong results
-                curr_level = &(binarySearch(curr_level->begin(), curr_level->end(), tmp)->next_level);
-            } else {
-                curr_level = &it->next_level;
+                auto it = binarySearch(curr_level->next_level.begin(), curr_level->next_level.end(), id);
+                if (it == curr_level->next_level.end()) {
+                    curr_level->next_level.emplace_back(Node(id));
+                    std::sort(curr_level->next_level.begin(), curr_level->next_level.end());
+                    //std::sort changes the address of the vector in the node so we can't save a pointer to it and save oursaves a search
+                    //We can definitely do it better.
+                    //std::vector<Node>* nxt_lvl = &curr_level->back().next_level;
+                    //std::sort(curr_level->begin(), curr_level->end());
+                    //curr_level = nxt_lvl; produces wrong results
+                    curr_level = &*binarySearch(curr_level->next_level.begin(), curr_level->next_level.end(), id);
+                } else {
+                    curr_level = &*it;
+                }
             }
         }
+
+        curr_level->lines.push_back(++line_count);
     }
-    std::vector<Node>* getTrie() {
+    
+    Node* getTrie() {
         return &trie_;
     }
 
-    static std::vector<Node>* find(uint16_t id, std::vector<Node>* curr_level) {
-        if (curr_level == nullptr) {
-            return nullptr;
-        }
-        Node tmp;
-        tmp.id_ = id;
-        auto it = binarySearch(curr_level->begin(), curr_level->end(), tmp);
-        if (it == curr_level->end()) {
-            return nullptr;
-        } else {
-            return &it->next_level;
-        }
-    }
     /*The rest of the find functions are for testing/debugging purposes*/
     std::string find(std::string input) {
         std::vector<Node>* curr_level = &trie_;
@@ -125,4 +120,19 @@ public:
     }
 
 };
+
+inline const Node* find(uint16_t id, const Node* root) {
+  if(!root) {
+    return nullptr;
+  }
+
+  auto it = binarySearch(root->next_level.begin(), root->next_level.end(), id);
+
+  if(it == root->next_level.end()) {
+    return nullptr;
+  } else {
+    return &*it;
+  }
+}
+
 } //Namespace
